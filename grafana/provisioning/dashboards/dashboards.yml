@@ -1,0 +1,55 @@
+# =============================================================================
+# GRAFANA DASHBOARD PROVIDER — tells Grafana where to find dashboard files
+# =============================================================================
+# This file tells Grafana:
+#   "Look in this folder for .json files and load them as dashboards"
+#
+# Without this file, Grafana would not know where our dashboard JSON is,
+# even if the file exists in the container.
+#
+# This file is mounted into the container at:
+#   /etc/grafana/provisioning/dashboards/dashboards.yml
+# =============================================================================
+
+apiVersion: 1
+
+# providers: a list of places where Grafana should look for dashboards.
+# We only have one provider — our local folder.
+providers:
+
+  - # name: a label for this provider (shown in Grafana admin panel)
+    name: crypto_dashboards
+
+    # orgId: which Grafana organisation this belongs to
+    # 1 = the default organisation (we only have one)
+    orgId: 1
+
+    # type: "file" means dashboards are stored as JSON files on disk
+    # Other options include "database" but "file" is simplest for our project
+    type: file
+
+    # disableDeletion: if true, dashboards loaded from files cannot be deleted
+    # via the Grafana UI. We set false so you can freely edit during development.
+    disableDeletion: false
+
+    # updateIntervalSeconds: how often Grafana checks for changes to the JSON files
+    # 30 seconds = if you edit crypto_dashboard.json, Grafana reloads it within 30s
+    # Very useful during development when you are tweaking panels
+    updateIntervalSeconds: 30
+
+    # allowUiUpdates: can you edit these dashboards in the browser?
+    # true = yes, you can drag panels around, edit queries, etc.
+    # NOTE: changes made in the UI are NOT saved back to the JSON file unless
+    # you manually export and replace the file
+    allowUiUpdates: true
+
+    options:
+      # path: the folder inside the container where Grafana looks for .json files
+      # This matches the volume mount in docker-compose.yml:
+      #   ./grafana/provisioning → /etc/grafana/provisioning
+      # So this path = ./grafana/provisioning/dashboards/ on your Windows machine
+      path: /etc/grafana/provisioning/dashboards
+
+      # foldersFromFilesStructure: if true, subfolders become Grafana folders
+      # We keep everything flat (no subfolders), so this is false
+      foldersFromFilesStructure: false

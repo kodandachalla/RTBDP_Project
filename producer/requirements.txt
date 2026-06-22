@@ -1,0 +1,14 @@
+# Python dependencies for the Binance WebSocket producer.
+# Installed inside the Docker image (see producer/Dockerfile).
+# Versions are pinned so the build is reproducible across machines.
+
+# websocket-client — manages the persistent Binance WebSocket connection.
+# Provides WebSocketApp with automatic ping/pong keep-alive and callback hooks
+# for on_open, on_message, on_error, and on_close.
+websocket-client==1.7.0
+
+# confluent-kafka — Kafka producer and AdminClient.
+# Wraps the C library librdkafka, making it significantly faster than the
+# pure-Python kafka-python alternative at high message throughput.
+# Used for: Producer (send trades), AdminClient (create topic, wait for Kafka).
+confluent-kafka==2.3.0

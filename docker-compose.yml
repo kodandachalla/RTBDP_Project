@@ -1,0 +1,219 @@
+# =============================================================================
+# DOCKER COMPOSE — Real-Time Crypto Anomaly Detection
+# Start the full stack: docker compose up -d --build
+#
+# Services:
+#   kafka           — message broker (KRaft mode, no ZooKeeper)
+#   kafka-ui        — browser UI at http://localhost:8080
+#   postgres        — stores OHLC candles, anomaly events, live ticker
+#   grafana         — dashboard at http://localhost:3000  (admin / admin)
+#   producer        — streams Binance trades → Kafka
+#   flink-processor — reads Kafka → computes OHLC + CEP → writes PostgreSQL
+# =============================================================================
+
+networks:
+  # Bridge network shared by all containers; services reach each other by
+  # service name as hostname (e.g. "kafka", "postgres") — no IP addresses needed.
+  crypto_net:
+    driver: bridge
+
+volumes:
+  kafka_data:     # Persists Kafka log segments (topic messages) across restarts
+  postgres_data:  # Persists PostgreSQL data directory across restarts
+  grafana_data:   # Persists Grafana dashboard and datasource configs across restarts
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # KAFKA — Apache Kafka 3.7 in KRaft mode (no ZooKeeper dependency)
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    # Hostname must match the advertised listener so intra-cluster traffic resolves correctly.
+    hostname: kafka
+    networks: [crypto_net]
+    ports:
+      # Exposes port 9092 to the host machine so external tools (kafka-cat, etc.) can connect.
+      - "9092:9092"
+    environment:
+      # Single-node cluster — node ID 1 acts as both broker and KRaft controller.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      # This node is the sole voter in the KRaft quorum; port 9093 is the controller port.
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # Two listeners serve different client locations:
+      #   PLAINTEXT_HOST (9092)  → host-machine tools connecting via the Docker port mapping
+      #   PLAINTEXT      (19092) → intra-Docker services (producer, flink, kafka-ui)
+      # Keeping them separate ensures containers always use the internal address and never
+      # accidentally route traffic through the host port mapping, which adds latency.
+      KAFKA_LISTENERS: "PLAINTEXT_HOST://:9092,PLAINTEXT://:19092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:19092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      # Brokers replicate data to each other using the internal PLAINTEXT listener.
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      # KRaft leader election and metadata replication use the dedicated CONTROLLER listener.
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # Disable automatic topic creation so the producer always controls partition count
+      # and retention when it creates the "raw-trades" topic at startup.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Retain messages for 2 hours (7 200 000 ms) — long enough to replay a short outage.
+      KAFKA_LOG_RETENTION_MS: "7200000"
+      # Single-node cluster: replication factor of 1 is the maximum possible.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      # Stable cluster ID generated once; changing it would require wiping kafka_data volume.
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
+    volumes:
+      # Mount the named volume so topic data survives container restarts.
+      - kafka_data:/var/lib/kafka/data
+
+    healthcheck:
+      # "kafka-topics.sh --list" succeeds only after Kafka has fully started and is
+      # ready to accept connections — used as a readiness gate by dependent services.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      # Give Kafka 30 s to complete its KRaft startup before the first health probe.
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # KAFKA UI — browser-based topic and message inspector
+  # ---------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    networks: [crypto_net]
+    ports:
+      # Accessible at http://localhost:8080 on the host machine.
+      - "8080:8080"
+    depends_on:
+      # Wait for Kafka to pass its health check before starting the UI.
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "crypto-cluster"
+      # Use the internal Docker listener; kafka-ui is inside Docker so it must not
+      # use the host-mapped port 9092.
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:19092"
+      # Allow runtime config changes without restarting the container.
+      DYNAMIC_CONFIG_ENABLED: "true"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # POSTGRESQL — stores all pipeline output consumed by Grafana
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    networks: [crypto_net]
+    ports:
+      # Exposed to the host for direct inspection with psql or a GUI like DBeaver.
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: crypto_market
+      POSTGRES_USER: flink
+      POSTGRES_PASSWORD: flink_password
+      # "trust" skips password verification — acceptable for local dev only, never production.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      # Persist the database data directory so rows survive container restarts.
+      - postgres_data:/var/lib/postgresql/data
+      # init.sql is executed once on first container start to create the three pipeline
+      # tables: ohlc_candles, anomaly_events, and price_ticker.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # pg_isready exits 0 only when PostgreSQL is fully accepting connections.
+      test: ["CMD-SHELL", "pg_isready -U flink -d crypto_market"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # GRAFANA — real-time dashboard over PostgreSQL
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana
+    networks: [crypto_net]
+    ports:
+      # Accessible at http://localhost:3000 on the host machine.
+      - "3000:3000"
+    depends_on:
+      # Grafana queries PostgreSQL immediately on load, so wait for it to be healthy.
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Disable public sign-up to prevent unintended access in a shared network.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Sets the home dashboard to the pre-built crypto dashboard so it opens automatically.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/crypto_dashboard.json
+    volumes:
+      # Persist Grafana state (plugins, preferences) across restarts.
+      - grafana_data:/var/lib/grafana
+      # Mount provisioning directory (read-only) so datasource and dashboard JSON are
+      # loaded automatically on startup — no manual Grafana setup needed.
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PRODUCER — streams Binance WebSocket trades into Kafka
+  # ---------------------------------------------------------------------------
+  producer:
+    build:
+      # Build context is the repo root so the Dockerfile can COPY from both
+      # the producer/ and any shared directories.
+      context: .
+      dockerfile: producer/Dockerfile
+    container_name: producer
+    networks: [crypto_net]
+    depends_on:
+      # Kafka must be healthy before the producer tries to create the "raw-trades" topic.
+      kafka:
+        condition: service_healthy
+    environment:
+      # Internal Docker listener; using localhost:9092 here would fail because that
+      # address only resolves on the host machine, not inside the container network.
+      KAFKA_BOOTSTRAP: "kafka:19092"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # FLINK PROCESSOR — Kafka → OHLC aggregation + CEP → PostgreSQL
+  # ---------------------------------------------------------------------------
+  flink-processor:
+    build:
+      # Build context is the repo root so the Dockerfile can COPY from flink/.
+      context: .
+      dockerfile: flink/Dockerfile
+    container_name: flink-processor
+    networks: [crypto_net]
+    depends_on:
+      # Kafka must be healthy before Flink tries to subscribe to "raw-trades".
+      kafka:
+        condition: service_healthy
+      # PostgreSQL must be healthy before Flink tries to insert OHLC rows.
+      postgres:
+        condition: service_healthy
+      # Wait for the producer to start (not necessarily healthy) so the "raw-trades"
+      # topic exists before Flink subscribes to it.
+      producer:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP: "kafka:19092"
+      # "postgres" resolves to the PostgreSQL container via the crypto_net network;
+      # no port mapping needed because both containers share the same network.
+      PG_HOST: "postgres"
+      PG_PORT: "5432"
+      PG_DATABASE: "crypto_market"
+      PG_USER: "flink"
+      PG_PASSWORD: "flink_password"
+    restart: unless-stopped

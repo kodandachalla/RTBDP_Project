@@ -1,0 +1,20 @@
+# Python dependencies for the PyFlink stream processor.
+# Installed inside the Docker image (see flink/Dockerfile).
+
+# setuptools must be listed explicitly because PyFlink's internal dependencies
+# use pkg_resources at import time, which setuptools provides.
+setuptools>=69.0.0
+
+# apache-flink 2.2.0 — the PyFlink version that supports Python 3.11.
+# Upgrading to 3.12 breaks pkg_resources compatibility with this release.
+apache-flink==2.2.0
+
+# psycopg2-binary — PostgreSQL driver used by PGWriter to INSERT candles and
+# anomaly events.  The "binary" variant ships pre-compiled C extensions so no
+# C compiler is required in the Docker image.
+psycopg2-binary==2.9.9
+
+# confluent-kafka — used only in wait_for_kafka_topic() to poll AdminClient
+# until the "raw-trades" topic appears before the Flink pipeline starts.
+confluent-kafka==2.3.0
+

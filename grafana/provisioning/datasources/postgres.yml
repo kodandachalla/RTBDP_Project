@@ -1,0 +1,86 @@
+# =============================================================================
+# GRAFANA DATASOURCE PROVISIONING — PostgreSQL connection
+# =============================================================================
+# Grafana reads this file on startup and automatically creates a connection
+# to our PostgreSQL database. Without this file you would have to manually
+# click "Add datasource" in the Grafana UI every time you restart.
+#
+# This file is mounted into the container at:
+#   /etc/grafana/provisioning/datasources/postgres.yml
+# Grafana scans that folder automatically on every startup.
+# =============================================================================
+
+# apiVersion: tells Grafana which version of the provisioning format this is.
+# Always "1" for current Grafana versions.
+apiVersion: 1
+
+# datasources: a list of database connections to create.
+# We only have one — our PostgreSQL database.
+datasources:
+
+  - # name: the display name shown in Grafana's UI and in dashboard queries
+    # You will see "PostgreSQL" in the datasource dropdown when editing panels
+    name: PostgreSQL
+
+    # type: which database driver to use
+    # "postgres" = the built-in PostgreSQL plugin that comes with Grafana
+    type: postgres
+
+    # uid: a unique identifier used internally by Grafana
+    # Dashboard JSON files reference datasources by this uid, not by name
+    # We set it manually so our dashboard JSON always finds the right datasource
+    uid: crypto_pg
+
+    # url: hostname:port of the PostgreSQL server
+    # IMPORTANT: we use "postgres:5432" NOT "localhost:5432"
+    # Because Grafana is inside Docker, "postgres" resolves to the postgres
+    # container via Docker's internal DNS. "localhost" would mean Grafana itself.
+    url: postgres:5432
+
+    # database: which PostgreSQL database to connect to
+    # Must match POSTGRES_DB in docker-compose.yml
+    database: crypto_market
+
+    # user: the PostgreSQL username
+    # Must match POSTGRES_USER in docker-compose.yml
+    user: flink
+
+    # secureJsonData: sensitive data like passwords stored separately
+    # Grafana encrypts these values when saving to disk
+    secureJsonData:
+      password: flink_password   # must match POSTGRES_PASSWORD in docker-compose.yml
+
+    # jsonData: additional PostgreSQL connection settings
+    jsonData:
+      # sslmode: whether to use SSL encryption for the DB connection
+      # "disable" = no SSL — fine because both containers are on the same
+      # private Docker network, not exposed to the internet
+      sslmode: disable
+
+      # maxOpenConns: maximum number of simultaneous DB connections Grafana keeps open
+      # 10 is plenty for a course project dashboard
+      maxOpenConns: 10
+
+      # maxIdleConns: how many connections to keep open even when not in use
+      # Avoids the overhead of creating a new connection for every dashboard refresh
+      maxIdleConns: 10
+
+      # connMaxLifetime: how long (in seconds) a connection can live before being recycled
+      # 14400 seconds = 4 hours. Prevents stale connections from causing errors.
+      connMaxLifetime: 14400
+
+      # postgresVersion: tells Grafana which PostgreSQL version we are running
+      # 1500 = PostgreSQL 15 (Grafana uses this to enable version-specific features)
+      postgresVersion: 1500
+
+      # timescaledb: whether TimescaleDB extension is installed
+      # We use plain PostgreSQL 15 without extensions, so this is false
+      timescaledb: false
+
+    # isDefault: should this be the default datasource for new panels?
+    # "true" means when you create a new panel, it uses PostgreSQL automatically
+    isDefault: true
+
+    # editable: can this datasource be modified through the Grafana UI?
+    # "true" means you can change settings in the browser if needed
+    editable: true
