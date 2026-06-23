@@ -50,7 +50,7 @@
       },
       "gridPos": {
         "h": 10,
-        "w": 3,
+        "w": 4,
         "x": 1,
         "y": 0
       },
@@ -184,7 +184,7 @@
       "gridPos": {
         "h": 10,
         "w": 9,
-        "x": 4,
+        "x": 5,
         "y": 0
       },
       "id": 2,
@@ -277,7 +277,7 @@
       "gridPos": {
         "h": 10,
         "w": 9,
-        "x": 13,
+        "x": 14,
         "y": 0
       },
       "id": 3,
@@ -361,7 +361,7 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 3,
+        "w": 4,
         "x": 1,
         "y": 10
       },
@@ -512,7 +512,7 @@
       "gridPos": {
         "h": 7,
         "w": 18,
-        "x": 4,
+        "x": 5,
         "y": 10
       },
       "id": 5,
@@ -584,8 +584,8 @@
         "comment": "This creates a dropdown at the top of the dashboard to switch between symbols. The query reads distinct symbols from our ohlc_candles table — so as soon as Flink starts writing data, the dropdown populates automatically.",
         "current": {
           "selected": false,
-          "text": "SOLUSDT",
-          "value": "SOLUSDT"
+          "text": "DOGEUSDT",
+          "value": "DOGEUSDT"
         },
         "datasource": {
           "type": "postgres",
@@ -607,7 +607,7 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": "1min",
           "value": "1min"
         },
