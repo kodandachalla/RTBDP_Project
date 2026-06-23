@@ -41,7 +41,7 @@ The pipeline:
 | Monitoring | Kafka UI | topics, partitions, consumer offsets |
 
 A detailed architecture diagram and the full write-up are in
-[`RTBDP_Report_Kodanda_Challa.docx`](RTBDP_Report_Kodanda_Challa.docx).
+[Proposal_Report_Presentation/RTBDP_Report_Kodanda_Challa.pdf](Proposal_Report_Presentation/RTBDP_Report_Kodanda_Challa.pdf)
 
 ---
 
