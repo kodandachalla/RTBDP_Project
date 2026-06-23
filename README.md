@@ -139,6 +139,13 @@ docker logs flink-processor --tail 30   # OHLC + CEP alerts
 ```
 RTBDP_Project/
 ├── docker-compose.yml                        6 services, one-command startup
+├── Proposal_Report_Presentation/
+│    ├── RTBDP_Presentation_Kodanda_Challa.pdf   
+│    ├── RTBDP_Presentation_Kodanda_Challa.pptx
+│    ├── RTBDP_Project_Proposal_Kodanda_Challa.docx
+│    ├── RTBDP_Project_Proposal_Kodanda_Challa.pdf
+│    ├── RTBDP_Report_Kodanda_Challa.docx
+│    └── RTBDP_Report_Kodanda_Challa.pdf
 ├── README.md                                 this file
 ├── postgres/
 │   └── init.sql                              creates the 3 tables on first boot
